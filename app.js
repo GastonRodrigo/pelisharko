@@ -1,18 +1,17 @@
 /* ===================================================
    PeliSharko 🦈 — App Logic
-   TMDB API + Search + Watchlist
+   TMDB API + Search + Filters + Watchlist
    =================================================== */
 
 // ─── Config ──────────────────────────────────────────
+const API_KEY = 'c25676d0dc9749f1406ece321a58d14a';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMG_BASE = 'https://image.tmdb.org/t/p';
 const POSTER_SIZE = '/w500';
 const BACKDROP_SIZE = '/w1280';
+const PROFILE_SIZE = '/w185';
 const LANG = 'es-ES';
 const WATCHLIST_KEY = 'pelisharko_watchlist';
-const APIKEY_KEY = 'pelisharko_apikey';
-
-let API_KEY = localStorage.getItem(APIKEY_KEY) || '';
 
 // ─── DOM References ──────────────────────────────────
 const $ = (sel) => document.querySelector(sel);
@@ -51,23 +50,67 @@ const dom = {
   modalOverview: $('#modal-overview'),
   modalActions: $('#modal-actions'),
   toastContainer: $('#toast-container'),
-  apiSetup: $('#api-setup-section'),
-  apiKeyInput: $('#api-key-input'),
-  apiKeySave: $('#api-key-save'),
+  // Filters
+  filtersToggle: $('#filters-toggle'),
+  filtersPanel: $('#filters-panel'),
+  filterGenre: $('#filter-genre'),
+  filterCountry: $('#filter-country'),
+  filterYear: $('#filter-year'),
+  filterSort: $('#filter-sort'),
+  filterRating: $('#filter-rating'),
+  filterDirector: $('#filter-director'),
+  directorDropdown: $('#director-dropdown'),
+  directorSelected: $('#director-selected'),
+  directorSelectedName: $('#director-selected-name'),
+  directorRemove: $('#director-remove'),
+  filterApply: $('#filter-apply'),
+  filterClear: $('#filter-clear'),
+  filtersActiveTags: $('#filters-active-tags'),
+  // Discover
+  discoverSection: $('#discover-section'),
+  discoverGrid: $('#discover-grid'),
+  discoverCount: $('#discover-count'),
+  discoverPagination: $('#discover-pagination'),
+  discoverPrev: $('#discover-prev'),
+  discoverNext: $('#discover-next'),
+  discoverPageInfo: $('#discover-page-info'),
 };
 
 // ─── State ───────────────────────────────────────────
 let watchlist = loadWatchlist();
 let currentView = 'search';
 let searchTimeout = null;
+let directorSearchTimeout = null;
+let genresList = [];
+
+// Filter state
+let filterState = {
+  genre: '',
+  country: '',
+  year: '',
+  sort: 'popularity.desc',
+  rating: '',
+  directorId: '',
+  directorName: '',
+};
+
+let discoverState = {
+  page: 1,
+  totalPages: 0,
+  totalResults: 0,
+  isActive: false,
+};
 
 // ─── TMDB API ────────────────────────────────────────
 async function tmdbFetch(endpoint, params = {}) {
-  if (!API_KEY) return null;
   const url = new URL(`${TMDB_BASE}${endpoint}`);
   url.searchParams.set('api_key', API_KEY);
   url.searchParams.set('language', LANG);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== '' && v !== null && v !== undefined) {
+      url.searchParams.set(k, v);
+    }
+  });
 
   try {
     const res = await fetch(url.toString());
@@ -100,6 +143,31 @@ async function getMovieDetails(movieId) {
   return tmdbFetch(`/movie/${movieId}`, { append_to_response: 'credits' });
 }
 
+async function getGenres() {
+  return tmdbFetch('/genre/movie/list');
+}
+
+async function searchPerson(query) {
+  return tmdbFetch('/search/person', { query, include_adult: 'false' });
+}
+
+async function discoverMovies(filters, page = 1) {
+  const params = {
+    page,
+    sort_by: filters.sort || 'popularity.desc',
+    include_adult: 'false',
+    'vote_count.gte': '50', // Avoid obscure movies
+  };
+
+  if (filters.genre) params.with_genres = filters.genre;
+  if (filters.country) params.with_origin_country = filters.country;
+  if (filters.year) params.primary_release_year = filters.year;
+  if (filters.rating) params['vote_average.gte'] = filters.rating;
+  if (filters.directorId) params.with_crew = filters.directorId;
+
+  return tmdbFetch('/discover/movie', params);
+}
+
 // ─── Watchlist (LocalStorage) ────────────────────────
 function loadWatchlist() {
   try {
@@ -129,7 +197,7 @@ function addToWatchlist(movie) {
     release_date: movie.release_date,
     vote_average: movie.vote_average,
     overview: movie.overview,
-    genre_ids: movie.genre_ids || (movie.genres ? movie.genres.map(g => g.id) : []),
+    genre_ids: movie.genre_ids || (movie.genres ? movie.genres.map((g) => g.id) : []),
     added_at: Date.now(),
   };
   watchlist.unshift(slim);
@@ -157,6 +225,10 @@ function getPosterUrl(path) {
 
 function getBackdropUrl(path) {
   return path ? `${IMG_BASE}${BACKDROP_SIZE}${path}` : null;
+}
+
+function getProfileUrl(path) {
+  return path ? `${IMG_BASE}${PROFILE_SIZE}${path}` : null;
 }
 
 function getRatingClass(rating) {
@@ -226,7 +298,6 @@ function createMovieCard(movie, context = 'search') {
       <div class="movie-card__year">${year}</div>
     </div>`;
 
-  // Event delegation for buttons
   card.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
     if (btn) {
@@ -234,7 +305,6 @@ function createMovieCard(movie, context = 'search') {
       handleCardAction(btn.dataset.action, movie);
       return;
     }
-    // Click on card = show detail
     openMovieModal(movie);
   });
 
@@ -281,7 +351,6 @@ function renderSkeletons(container, count = 10) {
 
 // ─── Modal ───────────────────────────────────────────
 async function openMovieModal(movie) {
-  // Show modal immediately with basic info
   dom.modal.classList.add('active');
   document.body.style.overflow = 'hidden';
 
@@ -292,48 +361,51 @@ async function openMovieModal(movie) {
   dom.modalBackdropImg.style.display = backdropUrl ? 'block' : 'none';
   dom.modalPosterImg.src = posterUrl || '';
   dom.modalTitle.textContent = movie.title;
-  dom.modalOriginalTitle.textContent = movie.original_title !== movie.title ? movie.original_title : '';
+  dom.modalOriginalTitle.textContent =
+    movie.original_title !== movie.title ? movie.original_title : '';
   dom.modalOverview.textContent = movie.overview || 'Sin sinopsis disponible.';
 
-  // Basic meta
   const year = getYear(movie.release_date);
   const rating = movie.vote_average ? movie.vote_average.toFixed(1) : '—';
   dom.modalMeta.innerHTML = `
     <span class="modal__meta-item"><span class="modal__meta-item-icon">📅</span> ${year}</span>
     <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${rating}</span>/10</span>`;
 
-  // Genres placeholder
   dom.modalGenres.innerHTML = '';
-
-  // Actions
   renderModalActions(movie);
 
-  // Fetch full details from API
-  if (API_KEY) {
-    const details = await getMovieDetails(movie.id);
-    if (details) {
-      // Update with full data
-      dom.modalOverview.textContent = details.overview || movie.overview || 'Sin sinopsis disponible.';
+  // Fetch full details
+  const details = await getMovieDetails(movie.id);
+  if (details) {
+    dom.modalOverview.textContent =
+      details.overview || movie.overview || 'Sin sinopsis disponible.';
 
-      if (details.original_title && details.original_title !== details.title) {
-        dom.modalOriginalTitle.textContent = details.original_title;
-      }
+    if (details.original_title && details.original_title !== details.title) {
+      dom.modalOriginalTitle.textContent = details.original_title;
+    }
 
-      // Runtime
-      const runtime = details.runtime ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m` : '';
+    const runtime = details.runtime
+      ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m`
+      : '';
 
-      dom.modalMeta.innerHTML = `
-        <span class="modal__meta-item"><span class="modal__meta-item-icon">📅</span> ${year}</span>
-        <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${details.vote_average ? details.vote_average.toFixed(1) : '—'}</span>/10</span>
-        ${runtime ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">⏱️</span> ${runtime}</span>` : ''}
-        ${details.vote_count ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">👥</span> ${details.vote_count.toLocaleString()} votos</span>` : ''}`;
+    // Find director from credits
+    let directorName = '';
+    if (details.credits && details.credits.crew) {
+      const director = details.credits.crew.find((c) => c.job === 'Director');
+      if (director) directorName = director.name;
+    }
 
-      // Genres
-      if (details.genres && details.genres.length) {
-        dom.modalGenres.innerHTML = details.genres
-          .map((g) => `<span class="modal__genre-tag">${g.name}</span>`)
-          .join('');
-      }
+    dom.modalMeta.innerHTML = `
+      <span class="modal__meta-item"><span class="modal__meta-item-icon">📅</span> ${year}</span>
+      <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${details.vote_average ? details.vote_average.toFixed(1) : '—'}</span>/10</span>
+      ${runtime ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">⏱️</span> ${runtime}</span>` : ''}
+      ${details.vote_count ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">👥</span> ${details.vote_count.toLocaleString()} votos</span>` : ''}
+      ${directorName ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">🎬</span> ${escapeHtml(directorName)}</span>` : ''}`;
+
+    if (details.genres && details.genres.length) {
+      dom.modalGenres.innerHTML = details.genres
+        .map((g) => `<span class="modal__genre-tag">${g.name}</span>`)
+        .join('');
     }
   }
 }
@@ -387,26 +459,25 @@ function showToast(message, type = 'info') {
 // ─── Search ──────────────────────────────────────────
 function handleSearchInput() {
   const query = dom.searchInput.value.trim();
-
-  // Show/hide clear button
   dom.searchClear.classList.toggle('visible', query.length > 0);
-
-  // Debounce
   clearTimeout(searchTimeout);
 
   if (!query) {
     dom.searchResultsSection.style.display = 'none';
-    dom.trendingSection.style.display = '';
-    dom.popularSection.style.display = '';
-    dom.topRatedSection.style.display = '';
+    // Show trending/popular/top if not in discover mode
+    if (!discoverState.isActive) {
+      showDefaultSections();
+    }
     return;
   }
 
+  // Hide discover results when searching
+  discoverState.isActive = false;
+  dom.discoverSection.style.display = 'none';
+
   searchTimeout = setTimeout(async () => {
     dom.searchResultsSection.style.display = '';
-    dom.trendingSection.style.display = 'none';
-    dom.popularSection.style.display = 'none';
-    dom.topRatedSection.style.display = 'none';
+    hideDefaultSections();
 
     renderSkeletons(dom.searchResultsGrid, 10);
 
@@ -432,10 +503,249 @@ function clearSearch() {
   dom.searchInput.value = '';
   dom.searchClear.classList.remove('visible');
   dom.searchResultsSection.style.display = 'none';
+  if (!discoverState.isActive) {
+    showDefaultSections();
+  }
+  dom.searchInput.focus();
+}
+
+function showDefaultSections() {
   dom.trendingSection.style.display = '';
   dom.popularSection.style.display = '';
   dom.topRatedSection.style.display = '';
-  dom.searchInput.focus();
+}
+
+function hideDefaultSections() {
+  dom.trendingSection.style.display = 'none';
+  dom.popularSection.style.display = 'none';
+  dom.topRatedSection.style.display = 'none';
+}
+
+// ─── Filters ─────────────────────────────────────────
+function toggleFilters() {
+  const isOpen = dom.filtersPanel.classList.toggle('open');
+  dom.filtersToggle.classList.toggle('active', isOpen);
+}
+
+async function initGenres() {
+  const data = await getGenres();
+  if (data && data.genres) {
+    genresList = data.genres;
+    genresList.forEach((genre) => {
+      const opt = document.createElement('option');
+      opt.value = genre.id;
+      opt.textContent = genre.name;
+      dom.filterGenre.appendChild(opt);
+    });
+  }
+}
+
+function initYears() {
+  const currentYear = new Date().getFullYear();
+  for (let y = currentYear; y >= 1920; y--) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    dom.filterYear.appendChild(opt);
+  }
+}
+
+// Director autocomplete
+function handleDirectorSearch() {
+  const query = dom.filterDirector.value.trim();
+  clearTimeout(directorSearchTimeout);
+
+  if (!query || query.length < 2) {
+    dom.directorDropdown.classList.remove('open');
+    return;
+  }
+
+  directorSearchTimeout = setTimeout(async () => {
+    const data = await searchPerson(query);
+    if (data && data.results) {
+      // Filter to people known for directing
+      const directors = data.results
+        .filter((p) => p.known_for_department === 'Directing')
+        .slice(0, 8);
+
+      if (directors.length === 0) {
+        dom.directorDropdown.innerHTML =
+          '<div class="filters__director-option" style="cursor:default;opacity:0.5;">No se encontraron directores</div>';
+      } else {
+        dom.directorDropdown.innerHTML = directors
+          .map((p) => {
+            const imgUrl = getProfileUrl(p.profile_path);
+            const imgHTML = imgUrl
+              ? `<img src="${imgUrl}" alt="">`
+              : '<span style="width:28px;height:28px;border-radius:50%;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:0.8rem;">🎬</span>';
+            return `<div class="filters__director-option" data-id="${p.id}" data-name="${escapeHtml(p.name)}">
+              ${imgHTML}
+              <span>${escapeHtml(p.name)}</span>
+            </div>`;
+          })
+          .join('');
+      }
+      dom.directorDropdown.classList.add('open');
+    }
+  }, 400);
+}
+
+function selectDirector(id, name) {
+  filterState.directorId = id;
+  filterState.directorName = name;
+  dom.filterDirector.value = '';
+  dom.directorDropdown.classList.remove('open');
+  dom.directorSelectedName.textContent = name;
+  dom.directorSelected.classList.add('visible');
+}
+
+function clearDirector() {
+  filterState.directorId = '';
+  filterState.directorName = '';
+  dom.filterDirector.value = '';
+  dom.directorSelected.classList.remove('visible');
+}
+
+function readFilterState() {
+  filterState.genre = dom.filterGenre.value;
+  filterState.country = dom.filterCountry.value;
+  filterState.year = dom.filterYear.value;
+  filterState.sort = dom.filterSort.value;
+  filterState.rating = dom.filterRating.value;
+  // directorId is set via autocomplete
+}
+
+function hasActiveFilters() {
+  return (
+    filterState.genre ||
+    filterState.country ||
+    filterState.year ||
+    filterState.rating ||
+    filterState.directorId ||
+    filterState.sort !== 'popularity.desc'
+  );
+}
+
+function renderActiveFilterTags() {
+  const tags = [];
+  if (filterState.genre) {
+    const genreName = genresList.find((g) => g.id == filterState.genre)?.name || filterState.genre;
+    tags.push(`🎭 ${genreName}`);
+  }
+  if (filterState.country) {
+    const countryOpt = dom.filterCountry.querySelector(`option[value="${filterState.country}"]`);
+    tags.push(`🌍 ${countryOpt ? countryOpt.textContent.trim() : filterState.country}`);
+  }
+  if (filterState.year) {
+    tags.push(`📅 ${filterState.year}`);
+  }
+  if (filterState.rating) {
+    tags.push(`⭐ ${filterState.rating}+`);
+  }
+  if (filterState.directorName) {
+    tags.push(`🎬 ${filterState.directorName}`);
+  }
+  const sortLabels = {
+    'popularity.desc': null,
+    'vote_average.desc': '📊 Mejor valoradas',
+    'primary_release_date.desc': '📊 Más recientes',
+    'revenue.desc': '📊 Mayor recaudación',
+    'original_title.asc': '📊 Título A-Z',
+  };
+  if (sortLabels[filterState.sort]) {
+    tags.push(sortLabels[filterState.sort]);
+  }
+
+  dom.filtersActiveTags.innerHTML = tags
+    .map((t) => `<span class="filters__active-tag">${t}</span>`)
+    .join('');
+}
+
+async function applyFilters() {
+  readFilterState();
+
+  if (!hasActiveFilters()) {
+    showToast('Seleccioná al menos un filtro', 'info');
+    return;
+  }
+
+  // Clear search
+  dom.searchInput.value = '';
+  dom.searchClear.classList.remove('visible');
+  dom.searchResultsSection.style.display = 'none';
+
+  // Hide default sections
+  hideDefaultSections();
+
+  // Show discover
+  discoverState.isActive = true;
+  discoverState.page = 1;
+  dom.discoverSection.style.display = '';
+
+  renderActiveFilterTags();
+  await loadDiscoverPage();
+}
+
+async function loadDiscoverPage() {
+  renderSkeletons(dom.discoverGrid, 20);
+
+  const data = await discoverMovies(filterState, discoverState.page);
+  if (data && data.results) {
+    discoverState.totalPages = Math.min(data.total_pages, 500); // TMDB caps at 500
+    discoverState.totalResults = data.total_results;
+
+    dom.discoverCount.textContent = `(${data.total_results.toLocaleString()} películas)`;
+
+    const movies = data.results.filter((m) => m.poster_path);
+    renderMovieGrid(dom.discoverGrid, movies);
+
+    if (movies.length === 0) {
+      dom.discoverGrid.innerHTML = `
+        <div class="empty-state" style="grid-column: 1/-1;">
+          <div class="empty-state__icon">🎯</div>
+          <h3 class="empty-state__title">Sin resultados</h3>
+          <p class="empty-state__text">No encontramos películas con esos filtros. Probá combinaciones diferentes.</p>
+        </div>`;
+    }
+
+    // Pagination
+    if (discoverState.totalPages > 1) {
+      dom.discoverPagination.style.display = 'flex';
+      dom.discoverPrev.disabled = discoverState.page <= 1;
+      dom.discoverNext.disabled = discoverState.page >= discoverState.totalPages;
+      dom.discoverPageInfo.textContent = `Página ${discoverState.page} de ${discoverState.totalPages}`;
+    } else {
+      dom.discoverPagination.style.display = 'none';
+    }
+  }
+
+  // Scroll to top of discover section
+  dom.discoverSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function clearFilters() {
+  dom.filterGenre.value = '';
+  dom.filterCountry.value = '';
+  dom.filterYear.value = '';
+  dom.filterSort.value = 'popularity.desc';
+  dom.filterRating.value = '';
+  clearDirector();
+
+  filterState = {
+    genre: '',
+    country: '',
+    year: '',
+    sort: 'popularity.desc',
+    rating: '',
+    directorId: '',
+    directorName: '',
+  };
+
+  dom.filtersActiveTags.innerHTML = '';
+  discoverState.isActive = false;
+  dom.discoverSection.style.display = 'none';
+  showDefaultSections();
+  showToast('Filtros limpiados', 'info');
 }
 
 // ─── Navigation ──────────────────────────────────────
@@ -471,20 +781,18 @@ function refreshCurrentView() {
   if (currentView === 'watchlist') {
     renderWatchlist();
   } else {
-    // Re-render search results or trending to update saved states
     const query = dom.searchInput.value.trim();
     if (query) {
-      // Re-trigger search to refresh cards
       handleSearchInput();
+    } else if (discoverState.isActive) {
+      loadDiscoverPage();
     } else {
-      // Refresh all visible grids
       reRenderVisibleGrids();
     }
   }
 }
 
 async function reRenderVisibleGrids() {
-  // Re-fetch to update saved indicators
   const [trending, popular, topRated] = await Promise.all([
     getTrending(),
     getPopular(),
@@ -496,42 +804,6 @@ async function reRenderVisibleGrids() {
   if (topRated?.results) renderMovieGrid(dom.topRatedGrid, topRated.results);
 }
 
-// ─── API Key Setup ───────────────────────────────────
-function showApiSetup() {
-  dom.apiSetup.style.display = '';
-  dom.trendingSection.style.display = 'none';
-  dom.popularSection.style.display = 'none';
-  dom.topRatedSection.style.display = 'none';
-}
-
-function hideApiSetup() {
-  dom.apiSetup.style.display = 'none';
-  dom.trendingSection.style.display = '';
-  dom.popularSection.style.display = '';
-  dom.topRatedSection.style.display = '';
-}
-
-async function saveApiKey() {
-  const key = dom.apiKeyInput.value.trim();
-  if (!key) {
-    showToast('Ingresá tu API Key', 'error');
-    return;
-  }
-
-  // Validate key by testing it
-  API_KEY = key;
-  const test = await getTrending();
-  if (test && test.results) {
-    localStorage.setItem(APIKEY_KEY, key);
-    showToast('API Key guardada correctamente', 'success');
-    hideApiSetup();
-    initContent();
-  } else {
-    API_KEY = '';
-    showToast('API Key inválida. Verificala e intentá de nuevo.', 'error');
-  }
-}
-
 // ─── Utilities ───────────────────────────────────────
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -539,17 +811,8 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function debounce(fn, ms) {
-  let timer;
-  return (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  };
-}
-
 // ─── Init ────────────────────────────────────────────
 async function initContent() {
-  // Show skeletons
   renderSkeletons(dom.trendingGrid, 10);
   renderSkeletons(dom.popularGrid, 10);
   renderSkeletons(dom.topRatedGrid, 10);
@@ -560,15 +823,9 @@ async function initContent() {
     getTopRated(),
   ]);
 
-  if (trending?.results) {
-    renderMovieGrid(dom.trendingGrid, trending.results);
-  }
-  if (popular?.results) {
-    renderMovieGrid(dom.popularGrid, popular.results);
-  }
-  if (topRated?.results) {
-    renderMovieGrid(dom.topRatedGrid, topRated.results);
-  }
+  if (trending?.results) renderMovieGrid(dom.trendingGrid, trending.results);
+  if (popular?.results) renderMovieGrid(dom.popularGrid, popular.results);
+  if (topRated?.results) renderMovieGrid(dom.topRatedGrid, topRated.results);
 }
 
 function init() {
@@ -592,23 +849,53 @@ function init() {
     if (e.key === 'Escape') closeModal();
   });
 
-  // API Key setup
-  dom.apiKeySave.addEventListener('click', saveApiKey);
-  dom.apiKeyInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveApiKey();
-  });
-
   // Navbar scroll effect
   window.addEventListener('scroll', () => {
     dom.navbar.classList.toggle('scrolled', window.scrollY > 20);
   });
 
-  // Check if API key exists
-  if (!API_KEY) {
-    showApiSetup();
-  } else {
-    initContent();
-  }
+  // Filters
+  dom.filtersToggle.addEventListener('click', toggleFilters);
+  dom.filterApply.addEventListener('click', applyFilters);
+  dom.filterClear.addEventListener('click', clearFilters);
+
+  // Director autocomplete
+  dom.filterDirector.addEventListener('input', handleDirectorSearch);
+  dom.directorDropdown.addEventListener('click', (e) => {
+    const opt = e.target.closest('.filters__director-option');
+    if (opt && opt.dataset.id) {
+      selectDirector(opt.dataset.id, opt.dataset.name);
+    }
+  });
+  dom.directorRemove.addEventListener('click', clearDirector);
+
+  // Close director dropdown on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.filters__director-wrapper')) {
+      dom.directorDropdown.classList.remove('open');
+    }
+  });
+
+  // Discover pagination
+  dom.discoverPrev.addEventListener('click', () => {
+    if (discoverState.page > 1) {
+      discoverState.page--;
+      loadDiscoverPage();
+    }
+  });
+  dom.discoverNext.addEventListener('click', () => {
+    if (discoverState.page < discoverState.totalPages) {
+      discoverState.page++;
+      loadDiscoverPage();
+    }
+  });
+
+  // Init filters
+  initGenres();
+  initYears();
+
+  // Load content
+  initContent();
 }
 
 // Launch 🚀
