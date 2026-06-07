@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PeliSharko — Buscá películas, mirá sus detalles y guardalas en tu lista de películas que querés ver. Base de datos con miles de títulos.">
+  <meta name="theme-color" content="#06060f">
+  <title>PeliSharko 🦈 — Tu Watchlist de Películas</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦈</text></svg>">
+</head>
+<body>
+
+  <!-- ========== NAVBAR ========== -->
+  <nav class="navbar" id="navbar">
+    <div class="navbar__logo">
+      <span class="navbar__logo-icon">🦈</span>
+      <span class="navbar__logo-text">PeliSharko</span>
+    </div>
+    <div class="navbar__tabs">
+      <button class="navbar__tab active" id="tab-search" data-tab="search">🔍 Buscar</button>
+      <button class="navbar__tab" id="tab-watchlist" data-tab="watchlist">
+        📌 Mi Lista
+        <span class="badge" id="watchlist-badge" style="display:none;">0</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ========== MAIN ========== -->
+  <main class="main">
+
+    <!-- ===== SEARCH VIEW ===== -->
+    <div class="search-section active" id="view-search">
+
+      <!-- Hero / Search Bar -->
+      <section class="hero">
+        <h1 class="hero__title">
+          Encontrá tu próxima <span class="hero__title-highlight">película favorita</span>
+        </h1>
+        <p class="hero__subtitle">Buscá entre miles de títulos, mirá los detalles y guardá las que querés ver 🍿</p>
+        <div class="search-bar" id="search-bar">
+          <div class="search-bar__input-wrapper">
+            <span class="search-bar__icon">🔍</span>
+            <input
+              type="text"
+              class="search-bar__input"
+              id="search-input"
+              placeholder="Buscá una película... ej: Interestelar, Batman, Volver al futuro"
+              autocomplete="off"
+            >
+            <button class="search-bar__clear" id="search-clear" title="Limpiar búsqueda">✕</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Search Results -->
+      <section class="section" id="search-results-section" style="display:none;">
+        <div class="section__header">
+          <h2 class="section__title">
+            <span class="section__title-icon">🎯</span>
+            Resultados
+            <span class="section__count" id="search-count"></span>
+          </h2>
+        </div>
+        <div class="movie-grid" id="search-results-grid"></div>
+      </section>
+
+      <!-- Trending Movies -->
+      <section class="section" id="trending-section">
+        <div class="section__header">
+          <h2 class="section__title">
+            <span class="section__title-icon">🔥</span>
+            Tendencias de la Semana
+          </h2>
+        </div>
+        <div class="movie-grid" id="trending-grid"></div>
+      </section>
+
+      <!-- Popular Movies -->
+      <section class="section" id="popular-section">
+        <div class="section__header">
+          <h2 class="section__title">
+            <span class="section__title-icon">⭐</span>
+            Más Populares
+          </h2>
+        </div>
+        <div class="movie-grid" id="popular-grid"></div>
+      </section>
+
+      <!-- Top Rated -->
+      <section class="section" id="top-rated-section">
+        <div class="section__header">
+          <h2 class="section__title">
+            <span class="section__title-icon">🏆</span>
+            Mejor Valoradas
+          </h2>
+        </div>
+        <div class="movie-grid" id="top-rated-grid"></div>
+      </section>
+
+    </div>
+
+    <!-- ===== WATCHLIST VIEW ===== -->
+    <div class="watchlist-section" id="view-watchlist">
+      <section class="section">
+        <div class="section__header">
+          <h2 class="section__title">
+            <span class="section__title-icon">📌</span>
+            Películas que quiero ver
+            <span class="section__count" id="watchlist-count"></span>
+          </h2>
+        </div>
+        <div class="movie-grid" id="watchlist-grid"></div>
+        <div class="empty-state" id="watchlist-empty" style="display:none;">
+          <div class="empty-state__icon">🎬</div>
+          <h3 class="empty-state__title">Tu lista está vacía</h3>
+          <p class="empty-state__text">Buscá películas y agregalas a tu lista para no olvidarte de verlas</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===== API KEY SETUP ===== -->
+    <div class="section" id="api-setup-section" style="display:none;">
+      <div class="api-setup">
+        <div class="empty-state__icon">🔑</div>
+        <h3 class="api-setup__title">Configurá tu API Key de TMDB</h3>
+        <p class="api-setup__text">
+          Para buscar películas necesitás una API Key gratuita de TMDB.<br>
+          Creá una cuenta en <a href="https://www.themoviedb.org/signup" target="_blank">themoviedb.org</a>,
+          luego andá a <a href="https://www.themoviedb.org/settings/api" target="_blank">Settings → API</a> y copiá tu key.
+        </p>
+        <div class="api-setup__input-group">
+          <input
+            type="text"
+            class="api-setup__input"
+            id="api-key-input"
+            placeholder="Pegá tu API Key acá..."
+          >
+          <button class="api-setup__btn" id="api-key-save">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ========== MOVIE DETAIL MODAL ========== -->
+  <div class="modal-backdrop" id="movie-modal">
+    <div class="modal" id="modal-content">
+      <button class="modal__close" id="modal-close">✕</button>
+      <img class="modal__backdrop-img" id="modal-backdrop-img" src="" alt="">
+      <div class="modal__content">
+        <div class="modal__poster">
+          <img id="modal-poster-img" src="" alt="">
+        </div>
+        <div class="modal__details">
+          <h2 class="modal__title" id="modal-title"></h2>
+          <p class="modal__original-title" id="modal-original-title"></p>
+          <div class="modal__meta" id="modal-meta"></div>
+          <div class="modal__genres" id="modal-genres"></div>
+          <h4 class="modal__overview-title">Sinopsis</h4>
+          <p class="modal__overview" id="modal-overview"></p>
+          <div class="modal__actions" id="modal-actions"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== TOAST CONTAINER ========== -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
