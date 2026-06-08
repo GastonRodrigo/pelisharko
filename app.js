@@ -26,10 +26,15 @@ const dom = {
   searchCount: $('#search-count'),
   trendingSection: $('#trending-section'),
   trendingGrid: $('#trending-grid'),
+  trendingTitle: $('#trending-title'),
   popularSection: $('#popular-section'),
   popularGrid: $('#popular-grid'),
+  popularTitle: $('#popular-title'),
   topRatedSection: $('#top-rated-section'),
   topRatedGrid: $('#top-rated-grid'),
+  topRatedTitle: $('#top-rated-title'),
+  heroHighlight: $('#hero-highlight'),
+  contentTypeBtns: $$('.content-type-btn'),
   viewSearch: $('#view-search'),
   viewWatchlist: $('#view-watchlist'),
   watchlistGrid: $('#watchlist-grid'),
@@ -47,6 +52,7 @@ const dom = {
   modalOriginalTitle: $('#modal-original-title'),
   modalMeta: $('#modal-meta'),
   modalGenres: $('#modal-genres'),
+  modalStreaming: $('#modal-streaming'),
   modalOverview: $('#modal-overview'),
   modalActions: $('#modal-actions'),
   toastContainer: $('#toast-container'),
@@ -79,6 +85,7 @@ const dom = {
 // ─── State ───────────────────────────────────────────
 let watchlist = loadWatchlist();
 let currentView = 'search';
+let contentType = 'movie'; // 'movie' | 'tv'
 let searchTimeout = null;
 let directorSearchTimeout = null;
 let genresList = [];
@@ -127,24 +134,40 @@ async function searchMovies(query, page = 1) {
   return tmdbFetch('/search/movie', { query, page, include_adult: 'false' });
 }
 
+async function searchTV(query, page = 1) {
+  return tmdbFetch('/search/tv', { query, page, include_adult: 'false' });
+}
+
 async function getTrending() {
-  return tmdbFetch('/trending/movie/week');
+  return tmdbFetch(`/trending/${contentType}/week`);
 }
 
 async function getPopular() {
-  return tmdbFetch('/movie/popular');
+  const endpoint = contentType === 'movie' ? '/movie/popular' : '/tv/popular';
+  return tmdbFetch(endpoint);
 }
 
 async function getTopRated() {
-  return tmdbFetch('/movie/top_rated');
+  const endpoint = contentType === 'movie' ? '/movie/top_rated' : '/tv/top_rated';
+  return tmdbFetch(endpoint);
 }
 
 async function getMovieDetails(movieId) {
   return tmdbFetch(`/movie/${movieId}`, { append_to_response: 'credits' });
 }
 
+async function getTVDetails(tvId) {
+  return tmdbFetch(`/tv/${tvId}`, { append_to_response: 'credits' });
+}
+
+async function getWatchProviders(id, type) {
+  // type: 'movie' | 'tv'
+  return tmdbFetch(`/${type}/${id}/watch/providers`);
+}
+
 async function getGenres() {
-  return tmdbFetch('/genre/movie/list');
+  const endpoint = contentType === 'movie' ? '/genre/movie/list' : '/genre/tv/list';
+  return tmdbFetch(endpoint);
 }
 
 async function searchPerson(query) {
@@ -152,20 +175,27 @@ async function searchPerson(query) {
 }
 
 async function discoverMovies(filters, page = 1) {
+  const endpoint = contentType === 'movie' ? '/discover/movie' : '/discover/tv';
   const params = {
     page,
     sort_by: filters.sort || 'popularity.desc',
     include_adult: 'false',
-    'vote_count.gte': '50', // Avoid obscure movies
+    'vote_count.gte': '50',
   };
 
   if (filters.genre) params.with_genres = filters.genre;
   if (filters.country) params.with_origin_country = filters.country;
-  if (filters.year) params.primary_release_year = filters.year;
+  if (filters.year) {
+    if (contentType === 'movie') {
+      params.primary_release_year = filters.year;
+    } else {
+      params.first_air_date_year = filters.year;
+    }
+  }
   if (filters.rating) params['vote_average.gte'] = filters.rating;
   if (filters.directorId) params.with_crew = filters.directorId;
 
-  return tmdbFetch('/discover/movie', params);
+  return tmdbFetch(endpoint, params);
 }
 
 // ─── Watchlist (LocalStorage) ────────────────────────
@@ -186,23 +216,24 @@ function isInWatchlist(movieId) {
   return watchlist.some((m) => m.id === movieId);
 }
 
-function addToWatchlist(movie) {
-  if (isInWatchlist(movie.id)) return;
+function addToWatchlist(item) {
+  if (isInWatchlist(item.id)) return;
   const slim = {
-    id: movie.id,
-    title: movie.title,
-    original_title: movie.original_title,
-    poster_path: movie.poster_path,
-    backdrop_path: movie.backdrop_path,
-    release_date: movie.release_date,
-    vote_average: movie.vote_average,
-    overview: movie.overview,
-    genre_ids: movie.genre_ids || (movie.genres ? movie.genres.map((g) => g.id) : []),
+    id: item.id,
+    title: item.title || item.name,
+    original_title: item.original_title || item.original_name,
+    poster_path: item.poster_path,
+    backdrop_path: item.backdrop_path,
+    release_date: item.release_date || item.first_air_date,
+    vote_average: item.vote_average,
+    overview: item.overview,
+    genre_ids: item.genre_ids || (item.genres ? item.genres.map((g) => g.id) : []),
+    media_type: item.media_type || (item.title ? 'movie' : 'tv'),
     added_at: Date.now(),
   };
   watchlist.unshift(slim);
   saveWatchlist();
-  showToast(`"${movie.title}" agregada a tu lista`, 'success');
+  showToast(`"${slim.title}" agregada a tu lista`, 'success');
 }
 
 function removeFromWatchlist(movieId) {
@@ -241,44 +272,54 @@ function getYear(dateStr) {
   return dateStr ? dateStr.split('-')[0] : '—';
 }
 
-function createMovieCard(movie, context = 'search') {
+function createMovieCard(item, context = 'search') {
   const card = document.createElement('div');
   card.className = 'movie-card';
-  card.dataset.movieId = movie.id;
+  card.dataset.movieId = item.id;
 
-  const posterUrl = getPosterUrl(movie.poster_path);
-  const rating = movie.vote_average ? movie.vote_average.toFixed(1) : null;
-  const year = getYear(movie.release_date);
-  const saved = isInWatchlist(movie.id);
+  // TV shows use 'name' instead of 'title', 'first_air_date' instead of 'release_date'
+  const title = item.title || item.name || 'Sin título';
+  const releaseDate = item.release_date || item.first_air_date;
+  const isTV = item.media_type === 'tv' || (!item.title && item.name);
+
+  const posterUrl = getPosterUrl(item.poster_path);
+  const rating = item.vote_average ? item.vote_average.toFixed(1) : null;
+  const year = getYear(releaseDate);
+  const saved = isInWatchlist(item.id);
 
   let posterHTML;
   if (posterUrl) {
-    posterHTML = `<img class="movie-card__poster" src="${posterUrl}" alt="${escapeHtml(movie.title)}" loading="lazy">`;
+    posterHTML = `<img class="movie-card__poster" src="${posterUrl}" alt="${escapeHtml(title)}" loading="lazy">`;
   } else {
     posterHTML = `
       <div class="movie-card__no-poster">
-        <div class="movie-card__no-poster-icon">🎬</div>
+        <div class="movie-card__no-poster-icon">${isTV ? '📺' : '🎬'}</div>
         <span>Sin poster</span>
       </div>`;
   }
 
   let ratingHTML = '';
   if (rating && parseFloat(rating) > 0) {
-    ratingHTML = `<span class="movie-card__rating movie-card__rating--${getRatingClass(movie.vote_average)}">⭐ ${rating}</span>`;
+    ratingHTML = `<span class="movie-card__rating movie-card__rating--${getRatingClass(item.vote_average)}">⭐ ${rating}</span>`;
   }
 
   let savedHTML = saved ? `<span class="movie-card__saved">📌</span>` : '';
 
+  // Media type badge for watchlist (mixed content)
+  let typeBadge = context === 'watchlist'
+    ? `<span class="movie-card__type-badge">${isTV ? '📺 Serie' : '🎬 Peli'}</span>`
+    : '';
+
   let overlayBtns = '';
   if (context === 'watchlist') {
     overlayBtns = `
-      <button class="movie-card__overlay-btn movie-card__overlay-btn--info" data-action="detail" data-movie-id="${movie.id}">👁️ Detalle</button>
-      <button class="movie-card__overlay-btn movie-card__overlay-btn--danger" data-action="remove" data-movie-id="${movie.id}">🗑️ Quitar</button>`;
+      <button class="movie-card__overlay-btn movie-card__overlay-btn--info" data-action="detail" data-movie-id="${item.id}">👁️ Detalle</button>
+      <button class="movie-card__overlay-btn movie-card__overlay-btn--danger" data-action="remove" data-movie-id="${item.id}">🗑️ Quitar</button>`;
   } else {
     overlayBtns = `
-      <button class="movie-card__overlay-btn movie-card__overlay-btn--info" data-action="detail" data-movie-id="${movie.id}">👁️ Detalle</button>
-      <button class="movie-card__overlay-btn movie-card__overlay-btn--primary" data-action="${saved ? 'remove' : 'add'}" data-movie-id="${movie.id}">
-        ${saved ? '✓ Guardada' : '💾 Guardar'}
+      <button class="movie-card__overlay-btn movie-card__overlay-btn--info" data-action="detail" data-movie-id="${item.id}">👁️ Detalle</button>
+      <button class="movie-card__overlay-btn movie-card__overlay-btn--primary" data-action="${saved ? 'remove' : 'add'}" data-movie-id="${item.id}">
+        ${saved ? '✓ Guardado' : '💾 Guardar'}
       </button>`;
   }
 
@@ -287,6 +328,7 @@ function createMovieCard(movie, context = 'search') {
       ${posterHTML}
       ${ratingHTML}
       ${savedHTML}
+      ${typeBadge}
       <div class="movie-card__overlay">
         <div class="movie-card__overlay-actions">
           ${overlayBtns}
@@ -294,7 +336,7 @@ function createMovieCard(movie, context = 'search') {
       </div>
     </div>
     <div class="movie-card__info">
-      <div class="movie-card__title">${escapeHtml(movie.title)}</div>
+      <div class="movie-card__title">${escapeHtml(title)}</div>
       <div class="movie-card__year">${year}</div>
     </div>`;
 
@@ -302,10 +344,10 @@ function createMovieCard(movie, context = 'search') {
     const btn = e.target.closest('[data-action]');
     if (btn) {
       e.stopPropagation();
-      handleCardAction(btn.dataset.action, movie);
+      handleCardAction(btn.dataset.action, item);
       return;
     }
-    openMovieModal(movie);
+    openMovieModal(item);
   });
 
   return card;
@@ -350,57 +392,83 @@ function renderSkeletons(container, count = 10) {
 }
 
 // ─── Modal ───────────────────────────────────────────
-async function openMovieModal(movie) {
+async function openMovieModal(item) {
   dom.modal.classList.add('active');
   document.body.style.overflow = 'hidden';
 
-  const posterUrl = getPosterUrl(movie.poster_path);
-  const backdropUrl = getBackdropUrl(movie.backdrop_path);
+  const title = item.title || item.name || 'Sin título';
+  const originalTitle = item.original_title || item.original_name;
+  const releaseDate = item.release_date || item.first_air_date;
+  const isTV = item.media_type === 'tv' || (!item.title && item.name);
+
+  const posterUrl = getPosterUrl(item.poster_path);
+  const backdropUrl = getBackdropUrl(item.backdrop_path);
 
   dom.modalBackdropImg.src = backdropUrl || '';
   dom.modalBackdropImg.style.display = backdropUrl ? 'block' : 'none';
   dom.modalPosterImg.src = posterUrl || '';
-  dom.modalTitle.textContent = movie.title;
-  dom.modalOriginalTitle.textContent =
-    movie.original_title !== movie.title ? movie.original_title : '';
-  dom.modalOverview.textContent = movie.overview || 'Sin sinopsis disponible.';
+  dom.modalTitle.textContent = title;
+  dom.modalOriginalTitle.textContent = originalTitle !== title ? originalTitle : '';
+  dom.modalOverview.textContent = item.overview || 'Sin sinopsis disponible.';
 
-  const year = getYear(movie.release_date);
-  const rating = movie.vote_average ? movie.vote_average.toFixed(1) : '—';
+  const year = getYear(releaseDate);
+  const rating = item.vote_average ? item.vote_average.toFixed(1) : '—';
   dom.modalMeta.innerHTML = `
     <span class="modal__meta-item"><span class="modal__meta-item-icon">📅</span> ${year}</span>
-    <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${rating}</span>/10</span>`;
+    <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${rating}</span>/10</span>
+    <span class="modal__meta-item modal__type-pill ${isTV ? 'modal__type-pill--tv' : 'modal__type-pill--movie'}">${isTV ? '📺 Serie' : '🎬 Película'}</span>`;
 
   dom.modalGenres.innerHTML = '';
-  renderModalActions(movie);
+  dom.modalStreaming.innerHTML = '';
+  renderModalActions(item);
 
-  // Fetch full details
-  const details = await getMovieDetails(movie.id);
+  // Fetch full details + watch providers in parallel
+  const mediaType = isTV ? 'tv' : 'movie';
+  const [details, providers] = await Promise.all([
+    isTV ? getTVDetails(item.id) : getMovieDetails(item.id),
+    getWatchProviders(item.id, mediaType),
+  ]);
   if (details) {
-    dom.modalOverview.textContent =
-      details.overview || movie.overview || 'Sin sinopsis disponible.';
-
+    dom.modalOverview.textContent = details.overview || item.overview || 'Sin sinopsis disponible.';
     if (details.original_title && details.original_title !== details.title) {
       dom.modalOriginalTitle.textContent = details.original_title;
+    } else if (details.original_name && details.original_name !== details.name) {
+      dom.modalOriginalTitle.textContent = details.original_name;
     }
 
-    const runtime = details.runtime
-      ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m`
-      : '';
+    let extraMeta = '';
+    if (isTV) {
+      // TV-specific info
+      const seasons = details.number_of_seasons;
+      const episodes = details.number_of_episodes;
+      const status = tvStatusLabel(details.status);
+      const network = details.networks && details.networks[0] ? details.networks[0].name : '';
 
-    // Find director from credits
-    let directorName = '';
-    if (details.credits && details.credits.crew) {
-      const director = details.credits.crew.find((c) => c.job === 'Director');
-      if (director) directorName = director.name;
+      extraMeta = `
+        ${seasons ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">🗂️</span> ${seasons} temporada${seasons !== 1 ? 's' : ''}</span>` : ''}
+        ${episodes ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">📋</span> ${episodes} episodios</span>` : ''}
+        ${status ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">📡</span> ${status}</span>` : ''}
+        ${network ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">📺</span> ${escapeHtml(network)}</span>` : ''}`;
+    } else {
+      const runtime = details.runtime
+        ? `${Math.floor(details.runtime / 60)}h ${details.runtime % 60}m`
+        : '';
+      let directorName = '';
+      if (details.credits && details.credits.crew) {
+        const director = details.credits.crew.find((c) => c.job === 'Director');
+        if (director) directorName = director.name;
+      }
+      extraMeta = `
+        ${runtime ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">⏱️</span> ${runtime}</span>` : ''}
+        ${details.vote_count ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">👥</span> ${details.vote_count.toLocaleString()} votos</span>` : ''}
+        ${directorName ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">🎬</span> ${escapeHtml(directorName)}</span>` : ''}`;
     }
 
     dom.modalMeta.innerHTML = `
+      <span class="modal__meta-item modal__type-pill ${isTV ? 'modal__type-pill--tv' : 'modal__type-pill--movie'}">${isTV ? '📺 Serie' : '🎬 Película'}</span>
       <span class="modal__meta-item"><span class="modal__meta-item-icon">📅</span> ${year}</span>
       <span class="modal__meta-item"><span class="modal__meta-item-icon">⭐</span> <span class="modal__rating-value">${details.vote_average ? details.vote_average.toFixed(1) : '—'}</span>/10</span>
-      ${runtime ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">⏱️</span> ${runtime}</span>` : ''}
-      ${details.vote_count ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">👥</span> ${details.vote_count.toLocaleString()} votos</span>` : ''}
-      ${directorName ? `<span class="modal__meta-item"><span class="modal__meta-item-icon">🎬</span> ${escapeHtml(directorName)}</span>` : ''}`;
+      ${extraMeta}`;
 
     if (details.genres && details.genres.length) {
       dom.modalGenres.innerHTML = details.genres
@@ -408,6 +476,92 @@ async function openMovieModal(movie) {
         .join('');
     }
   }
+
+  // Render watch providers (Argentina = AR)
+  renderStreamingProviders(providers);
+}
+
+function tvStatusLabel(status) {
+  const map = {
+    'Returning Series': '🟢 En emisión',
+    'Ended': '🔴 Finalizada',
+    'Canceled': '⛔ Cancelada',
+    'In Production': '🟡 En producción',
+    'Planned': '🔵 Planeada',
+    'Pilot': '🟠 Piloto',
+  };
+  return map[status] || status || '';
+}
+
+function renderStreamingProviders(data) {
+  dom.modalStreaming.innerHTML = '';
+  if (!data || !data.results) return;
+
+  const ar = data.results['AR'];
+  if (!ar) {
+    dom.modalStreaming.innerHTML = `
+      <div class="modal__streaming-empty">
+        <span class="modal__streaming-empty-icon">🌎</span>
+        No disponible en plataformas de streaming en Argentina
+      </div>`;
+    return;
+  }
+
+  // Collect all providers: flatrate (subscription), rent, buy, free
+  const sections = [
+    { key: 'flatrate', label: 'Suscripción', icon: '▶️' },
+    { key: 'free',     label: 'Gratis',       icon: '🆓' },
+    { key: 'ads',      label: 'Con anuncios',  icon: '📢' },
+    { key: 'rent',     label: 'Alquiler',      icon: '🔑' },
+    { key: 'buy',      label: 'Compra',        icon: '🛒' },
+  ];
+
+  // Deduplicate providers across sections (show each provider once under its best category)
+  const seen = new Set();
+  let html = '<div class="modal__streaming-title">Disponible en Argentina</div>';
+
+  let hasAny = false;
+  sections.forEach(({ key, label, icon }) => {
+    const list = ar[key];
+    if (!list || list.length === 0) return;
+    const fresh = list.filter(p => !seen.has(p.provider_id));
+    if (fresh.length === 0) return;
+    fresh.forEach(p => seen.add(p.provider_id));
+    hasAny = true;
+
+    html += `<div class="modal__streaming-group">
+      <span class="modal__streaming-group-label">${icon} ${label}</span>
+      <div class="modal__streaming-logos">
+        ${fresh.map(p => {
+          const logoUrl = p.logo_path ? `${IMG_BASE}/w92${p.logo_path}` : null;
+          return logoUrl
+            ? `<div class="modal__streaming-provider" title="${escapeHtml(p.provider_name)}">
+                <img src="${logoUrl}" alt="${escapeHtml(p.provider_name)}" loading="lazy">
+                <span>${escapeHtml(p.provider_name)}</span>
+               </div>`
+            : `<div class="modal__streaming-provider modal__streaming-provider--text" title="${escapeHtml(p.provider_name)}">
+                <span>${escapeHtml(p.provider_name)}</span>
+               </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  });
+
+  if (!hasAny) {
+    dom.modalStreaming.innerHTML = `
+      <div class="modal__streaming-empty">
+        <span class="modal__streaming-empty-icon">🌎</span>
+        No disponible en plataformas de streaming en Argentina
+      </div>`;
+    return;
+  }
+
+  // Link to JustWatch page if available
+  const jwLink = ar.link
+    ? `<a class="modal__streaming-jw" href="${ar.link}" target="_blank" rel="noopener">Ver en JustWatch →</a>`
+    : '';
+
+  dom.modalStreaming.innerHTML = `<div class="modal__streaming-content">${html}${jwLink}</div>`;
 }
 
 function renderModalActions(movie) {
@@ -481,9 +635,12 @@ function handleSearchInput() {
 
     renderSkeletons(dom.searchResultsGrid, 10);
 
-    const data = await searchMovies(query);
+    const searchFn = contentType === 'tv' ? searchTV : searchMovies;
+    const data = await searchFn(query);
     if (data && data.results) {
       const results = data.results.filter((m) => m.poster_path || m.overview);
+      // Tag TV results with media_type
+      if (contentType === 'tv') results.forEach(r => { r.media_type = 'tv'; });
       dom.searchCount.textContent = `(${results.length} resultados)`;
       renderMovieGrid(dom.searchResultsGrid, results);
 
@@ -492,7 +649,7 @@ function handleSearchInput() {
           <div class="empty-state" style="grid-column: 1/-1;">
             <div class="empty-state__icon">🔍</div>
             <h3 class="empty-state__title">Sin resultados</h3>
-            <p class="empty-state__text">No encontramos películas con "${escapeHtml(query)}". Probá con otro título.</p>
+            <p class="empty-state__text">No encontramos ${contentType === 'tv' ? 'series' : 'películas'} con "${escapeHtml(query)}". Probá con otro título.</p>
           </div>`;
       }
     }
@@ -528,6 +685,10 @@ function toggleFilters() {
 }
 
 async function initGenres() {
+  // Clear existing options (except first)
+  while (dom.filterGenre.options.length > 1) {
+    dom.filterGenre.remove(1);
+  }
   const data = await getGenres();
   if (data && data.genres) {
     genresList = data.genres;
@@ -817,11 +978,23 @@ async function initContent() {
   renderSkeletons(dom.popularGrid, 10);
   renderSkeletons(dom.topRatedGrid, 10);
 
+  const isTV = contentType === 'tv';
+  dom.trendingTitle.textContent = isTV ? 'Series Tendencia de la Semana' : 'Tendencias de la Semana';
+  dom.popularTitle.textContent = isTV ? 'Series Más Populares' : 'Más Populares';
+  dom.topRatedTitle.textContent = isTV ? 'Series Mejor Valoradas' : 'Mejor Valoradas';
+  dom.heroHighlight.textContent = isTV ? 'serie favorita' : 'película favorita';
+
   const [trending, popular, topRated] = await Promise.all([
     getTrending(),
     getPopular(),
     getTopRated(),
   ]);
+
+  if (isTV) {
+    if (trending?.results) trending.results.forEach(r => { r.media_type = 'tv'; });
+    if (popular?.results) popular.results.forEach(r => { r.media_type = 'tv'; });
+    if (topRated?.results) topRated.results.forEach(r => { r.media_type = 'tv'; });
+  }
 
   if (trending?.results) renderMovieGrid(dom.trendingGrid, trending.results);
   if (popular?.results) renderMovieGrid(dom.popularGrid, popular.results);
@@ -831,6 +1004,27 @@ async function initContent() {
 function init() {
   // Watchlist badge
   updateWatchlistBadge();
+
+  // Content type toggle (Películas / Series)
+  dom.contentTypeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.type === contentType) return;
+      contentType = btn.dataset.type;
+      dom.contentTypeBtns.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Reset search and discover
+      dom.searchInput.value = '';
+      dom.searchClear.classList.remove('visible');
+      dom.searchResultsSection.style.display = 'none';
+      discoverState.isActive = false;
+      dom.discoverSection.style.display = 'none';
+      clearFilters();
+      showDefaultSections();
+      initGenres();
+      initContent();
+    });
+  });
 
   // Tab navigation
   dom.tabSearch.addEventListener('click', () => switchTab('search'));

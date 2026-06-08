@@ -35,9 +35,20 @@
       <!-- Hero / Search Bar -->
       <section class="hero">
         <h1 class="hero__title">
-          Encontrá tu próxima <span class="hero__title-highlight">película favorita</span>
+          Encontrá tu próximo <span class="hero__title-highlight" id="hero-highlight">favorito</span>
         </h1>
-        <p class="hero__subtitle">Buscá entre miles de títulos, filtrá por género, director o país, y guardá las que querés ver 🍿</p>
+        <p class="hero__subtitle">Buscá entre miles de títulos, filtrá por género, director o país, y guardá los que querés ver 🍿</p>
+
+        <!-- Content type toggle -->
+        <div class="content-type-toggle" id="content-type-toggle">
+          <button class="content-type-btn active" data-type="movie" id="btn-type-movie">
+            🎬 Películas
+          </button>
+          <button class="content-type-btn" data-type="tv" id="btn-type-tv">
+            📺 Series
+          </button>
+        </div>
+
         <div class="search-bar" id="search-bar">
           <div class="search-bar__input-wrapper">
             <span class="search-bar__icon">🔍</span>
@@ -45,7 +56,8 @@
               type="text"
               class="search-bar__input"
               id="search-input"
-              placeholder="Buscá una película... ej: Interestelar, Batman, Volver al futuro"
+              placeholder="Buscá una película o serie..."
+              id="search-input"
               autocomplete="off"
             >
             <button class="search-bar__clear" id="search-clear" title="Limpiar búsqueda">✕</button>
@@ -185,23 +197,23 @@
         <div class="movie-grid" id="search-results-grid"></div>
       </section>
 
-      <!-- Trending Movies -->
+      <!-- Trending -->
       <section class="section" id="trending-section">
         <div class="section__header">
           <h2 class="section__title">
             <span class="section__title-icon">🔥</span>
-            Tendencias de la Semana
+            <span id="trending-title">Tendencias de la Semana</span>
           </h2>
         </div>
         <div class="movie-grid" id="trending-grid"></div>
       </section>
 
-      <!-- Popular Movies -->
+      <!-- Popular -->
       <section class="section" id="popular-section">
         <div class="section__header">
           <h2 class="section__title">
             <span class="section__title-icon">⭐</span>
-            Más Populares
+            <span id="popular-title">Más Populares</span>
           </h2>
         </div>
         <div class="movie-grid" id="popular-grid"></div>
@@ -212,7 +224,7 @@
         <div class="section__header">
           <h2 class="section__title">
             <span class="section__title-icon">🏆</span>
-            Mejor Valoradas
+            <span id="top-rated-title">Mejor Valoradas</span>
           </h2>
         </div>
         <div class="movie-grid" id="top-rated-grid"></div>
@@ -226,7 +238,7 @@
         <div class="section__header">
           <h2 class="section__title">
             <span class="section__title-icon">📌</span>
-            Películas que quiero ver
+            Lo que quiero ver
             <span class="section__count" id="watchlist-count"></span>
           </h2>
         </div>
@@ -255,6 +267,7 @@
           <p class="modal__original-title" id="modal-original-title"></p>
           <div class="modal__meta" id="modal-meta"></div>
           <div class="modal__genres" id="modal-genres"></div>
+          <div class="modal__streaming" id="modal-streaming"></div>
           <h4 class="modal__overview-title">Sinopsis</h4>
           <p class="modal__overview" id="modal-overview"></p>
           <div class="modal__actions" id="modal-actions"></div>

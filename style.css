@@ -2,6 +2,73 @@
    PeliSharko 🦈 — Design System & Styles
    =================================================== */
 
+/* ---------- Content Type Toggle ---------- */
+.content-type-toggle {
+  display: inline-flex;
+  gap: 0;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.content-type-btn {
+  padding: 0.5rem 1.4rem;
+  border-radius: var(--radius-full);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: all var(--transition-normal);
+  letter-spacing: 0.2px;
+}
+
+.content-type-btn:hover {
+  color: var(--text-primary);
+}
+
+.content-type-btn.active {
+  background: var(--accent-gradient);
+  color: white;
+  box-shadow: 0 2px 14px rgba(139, 92, 246, 0.4);
+}
+
+/* ---------- Media type badge on card ---------- */
+.movie-card__type-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  color: var(--text-secondary);
+  border: 1px solid var(--glass-border);
+  z-index: 2;
+}
+
+/* ---------- Modal type pill ---------- */
+.modal__type-pill {
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.modal__type-pill--movie {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-primary-hover);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.modal__type-pill--tv {
+  background: rgba(6, 214, 160, 0.12);
+  color: var(--accent-secondary);
+  border: 1px solid rgba(6, 214, 160, 0.25);
+}
+
 /* ---------- Google Font ---------- */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
@@ -1178,6 +1245,127 @@ a {
   align-items: center;
   gap: 0.3rem;
 }
+
+/* ---------- Streaming Providers ---------- */
+.modal__streaming {
+  margin-bottom: 1.25rem;
+}
+
+.modal__streaming-content {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+}
+
+.modal__streaming-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-secondary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.modal__streaming-title::before {
+  content: '🇦🇷';
+  font-size: 0.85rem;
+}
+
+.modal__streaming-group {
+  margin-bottom: 0.75rem;
+}
+
+.modal__streaming-group:last-of-type {
+  margin-bottom: 0.5rem;
+}
+
+.modal__streaming-group-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.45rem;
+}
+
+.modal__streaming-logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.modal__streaming-provider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: default;
+}
+
+.modal__streaming-provider img {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: cover;
+  border: 1px solid var(--glass-border);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.modal__streaming-provider img:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.modal__streaming-provider span {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 52px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modal__streaming-provider--text span {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--glass-border);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  max-width: none;
+}
+
+.modal__streaming-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.6rem 0.8rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  font-style: italic;
+}
+
+.modal__streaming-jw {
+  display: inline-flex;
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--accent-primary-hover);
+  opacity: 0.8;
+  transition: opacity var(--transition-fast);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.modal__streaming-jw:hover { opacity: 1; }
 
 /* Pagination */
 .pagination {
